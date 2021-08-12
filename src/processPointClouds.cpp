@@ -28,12 +28,45 @@ typename pcl::PointCloud<PointT>::Ptr ProcessPointClouds<PointT>::FilterCloud(ty
     auto startTime = std::chrono::steady_clock::now();
 
     // TODO:: Fill in the function to do voxel grid point reduction and region based filtering
+    typename pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
+    pcl::VoxelGrid<PointT> vg;
+    vg.setInputCloud (cloud);
+    vg.setLeafSize (filterRes, filterRes, filterRes);
+    vg.filter(*cloud_filtered);
+
+    // Set region of interest
+    typename pcl::PointCloud<PointT>::Ptr cloud_region (new pcl::PointCloud<PointT>);
+    pcl::CropBox<PointT> region(true);          // Set to true if you want to be able to extract the indices of points being removed
+    region.setInputCloud(cloud_filtered);
+    region.setMin(minPoint);
+    region.setMax(maxPoint);
+    region.filter(*cloud_region);
+
+    // Filter out point from roof
+    std::vector<int> indices;
+    pcl::CropBox<PointT> roof(true);          // Set to true if you want to be able to extract the indices of points being removed
+    region.setInputCloud(cloud_region);
+    region.setMin(Eigen::Vector4f(-1.5, -1.7, -1, 1));
+    region.setMax(Eigen::Vector4f(2.6, 1.7, -0.4, 1));
+    region.filter(indices);
+
+    // Get points that's inside the box
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    for (int point : indices) {
+        inliers->indices.push_back(point);
+    }
+    // Extract (remove) point that's in the box from cloud
+    pcl::ExtractIndices<PointT> extract;
+    extract.setInputCloud(cloud_region);
+    extract.setIndices(inliers);
+    extract.setNegative(true);      // discard the inliers indice, keep to outliers
+    extract.filter(*cloud_region);
 
     auto endTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
     std::cout << "filtering took: " << elapsedTime.count() << " milliseconds" << std::endl;
 
-    return cloud;
+    return cloud_region;
 }
 
 
@@ -113,7 +146,7 @@ std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::C
     tree->setInputCloud (cloud);
 
     std::vector<pcl::PointIndices> cluster_indices;
-    pcl::EuclideanClusterExtraction<pcl::PointXYZ> EC_cluster;
+    pcl::EuclideanClusterExtraction<PointT> EC_cluster;
     EC_cluster.setClusterTolerance (clusterTolerance);  // 2cm
     EC_cluster.setMinClusterSize (minSize);             // 100
     EC_cluster.setMaxClusterSize (maxSize);             // 25000
