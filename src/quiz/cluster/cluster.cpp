@@ -88,7 +88,6 @@ std::vector<std::vector<int>> euclideanCluster(const std::vector<std::vector<flo
 
 int main ()
 {
-
 	// Create viewer
 	Box window;
   	window.x_min = -10;
