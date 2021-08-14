@@ -93,8 +93,6 @@ void clusterHelper(int indice, const std::vector<std::vector<float>> points, std
 std::vector<std::vector<int>> euclideanCluster(const std::vector<std::vector<float>>& points, KdTree* tree, float distanceTol)
 {
 
-	// TODO: Fill out this function to return list of indices for each cluster
-
 	std::vector<std::vector<int>> clusters;
 	std::vector<bool> processed(points.size(), false);
 

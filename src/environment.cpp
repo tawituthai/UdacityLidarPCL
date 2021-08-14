@@ -83,95 +83,18 @@ void simpleHighway(pcl::visualization::PCLVisualizer::Ptr &viewer)
     }
 }
 
-std::unordered_set<int> RansacPlane(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, int maxIterations, float distanceTol)
-{
-    std::unordered_set<int> inliersResult;
-    srand(time(NULL)); // Initialize random number generator
-                       // Time RansacPlane process
-    auto startTime = std::chrono::steady_clock::now();
-    while (maxIterations--)
-    {
-        std::unordered_set<int> inliers_ind;
-        while (inliers_ind.size() < 3)
-        {
-            inliers_ind.insert(rand() % cloud->points.size());
-        }
-
-        // Get a position of each points
-        float x1, y1, z1;
-        float x2, y2, z2;
-        float x3, y3, z3;
-        auto itr = inliers_ind.begin();
-        x1 = cloud->points[*itr].x;
-        y1 = cloud->points[*itr].y;
-        z1 = cloud->points[*itr].z;
-        itr++;
-        x2 = cloud->points[*itr].x;
-        y2 = cloud->points[*itr].y;
-        z2 = cloud->points[*itr].z;
-        itr++;
-        x3 = cloud->points[*itr].x;
-        y3 = cloud->points[*itr].y;
-        z3 = cloud->points[*itr].z;
-        // Calculate cross product
-        float cross_A = ((y2 - y1) * (z3 - z1)) - ((z2 - z1) * (y3 - y1));
-        float cross_B = ((z2 - z1) * (x3 - x1)) - ((x2 - x1) * (z3 - z1));
-        float cross_C = ((x2 - x1) * (y3 - y1)) - ((y2 - y1) * (x3 - x1));
-        float cross_D = -1 * ((cross_A * x1) + (cross_B * y1) + (cross_C * z1));
-
-        // Go through all points in cloud
-        for (int index = 0; index < cloud->points.size(); index++)
-        {
-            // make sure we ignore the 3 points we randomly pick to create line
-            if (inliers_ind.count(index) > 0)
-            {
-                continue; // skip current for-loop
-            }
-            pcl::PointXYZI point_ = cloud->points[index];
-            // Measure distance between every point and fitted line
-            float Dist_ = fabs(cross_A * point_.x + cross_B * point_.y + cross_C * point_.z + cross_D) / sqrt(pow(cross_A, 2) + pow(cross_B, 2) + +pow(cross_C, 2));
-            // If distance is smaller than threshold count it as inlier
-            if (Dist_ <= distanceTol)
-            {
-                inliers_ind.insert(index);
-            }
-        }
-        // Check if the current iteration have got more inlier than the previous one
-        if (inliers_ind.size() > inliersResult.size())
-        {
-            inliersResult = inliers_ind;
-        }
-    }
-
-    auto endTime = std::chrono::steady_clock::now();
-    auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-    std::cout << "RansacPlane took " << elapsedTime.count() << " milliseconds" << std::endl;
-    return inliersResult;
-}
-
 void customPipeline(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPointClouds<pcl::PointXYZI> *pointProcessorI, const pcl::PointCloud<pcl::PointXYZI>::Ptr &inputCloud)
 {
     // Downsampling point cloud
     pcl::PointCloud<pcl::PointXYZI>::Ptr fliteredCloud = pointProcessorI->FilterCloud(inputCloud, 0.3, Eigen::Vector4f(-10, -5, -2, 1), Eigen::Vector4f(30, 8, 1, 1));
     // Segment point cloud, separate between obstacles and road
-    std::unordered_set<int> inliers = RansacPlane(fliteredCloud, 25, 0.3);
-
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloudInliers(new pcl::PointCloud<pcl::PointXYZI>());  // Plane
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloudOutliers(new pcl::PointCloud<pcl::PointXYZI>()); // Obstacles
-    for (int index = 0; index < fliteredCloud->points.size(); index++)
-    {
-        pcl::PointXYZI point = fliteredCloud->points[index];
-        if (inliers.count(index))
-            cloudInliers->points.push_back(point);  // Plane (Green)
-        else
-            cloudOutliers->points.push_back(point); // Obstacles (Red)
-    }
+    std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, pcl::PointCloud<pcl::PointXYZI>::Ptr> segmentCloud = pointProcessorI->RansacPlane(fliteredCloud, 25, 0.3);
 
     // Render 2D point cloud with inliers and outliers
-    if (inliers.size())
+    if (segmentCloud.first->size())
     {
-        renderPointCloud(viewer, cloudInliers, "inliers", Color(0, 1, 0));
-        renderPointCloud(viewer, cloudOutliers, "outliers", Color(1, 0, 0));
+        renderPointCloud(viewer, segmentCloud.first, "inliers", Color(0, 1, 0));
+        renderPointCloud(viewer, segmentCloud.second, "outliers", Color(1, 0, 0));
     }
     else
     {
