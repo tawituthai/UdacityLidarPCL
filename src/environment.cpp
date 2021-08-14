@@ -89,16 +89,39 @@ void customPipeline(pcl::visualization::PCLVisualizer::Ptr &viewer, ProcessPoint
     pcl::PointCloud<pcl::PointXYZI>::Ptr fliteredCloud = pointProcessorI->FilterCloud(inputCloud, 0.3, Eigen::Vector4f(-10, -5, -2, 1), Eigen::Vector4f(30, 8, 1, 1));
     // Segment point cloud, separate between obstacles and road
     std::pair<pcl::PointCloud<pcl::PointXYZI>::Ptr, pcl::PointCloud<pcl::PointXYZI>::Ptr> segmentCloud = pointProcessorI->RansacPlane(fliteredCloud, 25, 0.3);
-
+    
     // Render 2D point cloud with inliers and outliers
     if (segmentCloud.first->size())
     {
-        renderPointCloud(viewer, segmentCloud.first, "inliers", Color(0, 1, 0));
-        renderPointCloud(viewer, segmentCloud.second, "outliers", Color(1, 0, 0));
+        renderPointCloud(viewer, segmentCloud.first, "inliers", Color(1, 0, 0));    // Obstacles (Red)
+        renderPointCloud(viewer, segmentCloud.second, "outliers", Color(0, 1, 0));  // Plane (Green)
     }
     else
     {
         renderPointCloud(viewer, fliteredCloud, "data");
+    }
+
+    // Clustering -- euclident clustering
+    KdTree* tree = new KdTree;
+    std::cout << "Obstacle cloud size: " << segmentCloud.second->size() << std::endl;
+    for (int i = 0; i < segmentCloud.first->size(); i++) {
+        tree->insert(segmentCloud.first->points[i], i);
+    }
+    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> cloudClusters = pointProcessorI->euclideanCluster(segmentCloud.first, tree, 0.53, 10, 500);
+
+    // Rendering
+    int clusterId = 0;
+    std::vector<Color> colors = {Color(1, 1, 0), Color(1, 0, 1), Color(1, 1, 1),
+                                 Color(1, 1, 0.5), Color(1, 0.5, 1), Color(1, 0.5, 0.5)};
+    for (pcl::PointCloud<pcl::PointXYZI>::Ptr cluster : cloudClusters)
+    {
+        std::cout << "cluster size ";
+        pointProcessorI->numPoints(cluster);
+        renderPointCloud(viewer, cluster, "obstCloud" + std::to_string(clusterId), colors[clusterId % colors.size()]);
+
+        Box box = pointProcessorI->BoundingBox(cluster);
+        renderBox(viewer, box, clusterId);
+        ++clusterId;
     }
 }
 

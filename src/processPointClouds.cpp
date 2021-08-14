@@ -196,17 +196,68 @@ std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT
     {
         PointT point = cloud->points[index];
         if (inliersResult.count(index))
-            cloudInliers->points.push_back(point);  // Plane (Green)
+            cloudInliers->points.push_back(point); // Plane (Green)
         else
             cloudOutliers->points.push_back(point); // Obstacles (Red)
     }
-    std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> segResult(cloudInliers, cloudOutliers);
+    std::pair<typename pcl::PointCloud<PointT>::Ptr, typename pcl::PointCloud<PointT>::Ptr> segResult(cloudOutliers, cloudInliers);
 
     auto endTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
     std::cout << "RansacPlane took " << elapsedTime.count() << " milliseconds" << std::endl;
 
     return segResult;
+}
+
+template <typename PointT>
+void ProcessPointClouds<PointT>::clusterHelper(int indice, typename pcl::PointCloud<PointT>::Ptr cloud, std::vector<int> &cluster_ids, std::vector<bool> &processed, KdTree *tree, float distanceTol)
+{
+    processed[indice] = true;
+    cluster_ids.push_back(indice);
+
+    std::vector<int> nearest = tree->search(cloud->points[indice], distanceTol);
+    for (int id : nearest)
+    {
+        if (!processed[id])
+        {
+            clusterHelper(id, cloud, cluster_ids, processed, tree, distanceTol);
+        }
+    }
+}
+
+template <typename PointT>
+std::vector<typename pcl::PointCloud<PointT>::Ptr> ProcessPointClouds<PointT>::euclideanCluster(typename pcl::PointCloud<PointT>::Ptr cloud, KdTree *tree, float distanceTol, float minSize, float maxSize)
+{
+
+    std::vector<typename pcl::PointCloud<PointT>::Ptr> clusters;
+    std::vector<bool> processed(cloud->points.size(), false);
+
+    int i = 0;
+    while (i < cloud->points.size())
+    {
+        if (processed[i])
+        {
+            i++;
+            continue;
+        }
+        // if point haven't process yet
+        typename pcl::PointCloud<PointT>::Ptr cluster(new pcl::PointCloud<PointT>);
+        std::vector<int> cluster_ids;
+        clusterHelper(i, cloud, cluster_ids, processed, tree, distanceTol);
+        if (cluster_ids.size() > minSize && cluster_ids.size() <= maxSize)
+        {
+            for (int i : cluster_ids)
+            {
+                cluster->points.push_back(cloud->points[i]);
+                cluster->width = cluster->points.size();
+                cluster->height = 1;
+            }
+            clusters.push_back(cluster);
+        }
+        i++;
+    }
+
+    return clusters;
 }
 
 template <typename PointT>
